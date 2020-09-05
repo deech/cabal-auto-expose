@@ -1,0 +1,2 @@
+* cabal-auto-expose
+  The [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose][README]] is in the ~cabal-auto-expose~ sub project.
