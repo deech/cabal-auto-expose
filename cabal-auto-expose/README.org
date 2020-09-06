@@ -13,7 +13,8 @@
     from the library's exposed module list.
   - Detects custom pre-processor modules: currently if you have a custom
     preprocessor that works on modules with the ~.myCustomExtension~ extension
-    ~hpack~ will them since it only works with the preprocessors baked into Cabal. 
+    ~hpack~ will ignore them since it only knows about the preprocessors baked
+    into Cabal.
   - Since this library directly uses the Cabal API it is much easier to keep
     pace with newer Cabal features, for example it is pretty straighforward to
     extend it to auto expose [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=signatures#pkg-field-library-signatures][Backpack signatures]]. Only reason that feature
