@@ -73,7 +73,7 @@
    cabal configure && cabal build
    #+END_EXAMPLE
    and you should see modules that have not been listed in the ~exposed-modules~
-   stanze being detected and compiled automatically.
+   stanza being detected and compiled automatically.
 
    Due to an annoying limitation with Cabal on subsequent builds you'll have to:
    #+BEGIN_EXAMPLE
