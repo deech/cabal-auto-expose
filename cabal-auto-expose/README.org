@@ -81,6 +81,8 @@
    #+END_EXAMPLE
    
    ~cabal build --only-reconfigure~ forces Cabal to use this library to check
-   for any new or removed modules and regenerate the package description, the
-   normal ~cabal build~ will work fine if nothing as been added/removed.
+   for any new or removed modules and internally regenerate the
+   [[https://hackage.haskell.org/package/Cabal-3.2.0.0/docs/Distribution-PackageDescription.html#t:PackageDescription][PackageDescription]] so they are properly recompiled; the normal ~cabal build~
+   will work fine if nothing as been added/removed. To clarify your ~.cabal~
+   file isn't touched, all changes are made to Cabal API data structures.
    
