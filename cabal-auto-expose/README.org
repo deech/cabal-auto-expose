@@ -1,9 +1,10 @@
 * cabal-auto-expose
   /cabal-auto-expose/ is a build time library which, like [[https://github.com/sol/hpack][hpack]], auto detects
-  new and removed Haskell modules in your project's sources and exposes them for
-  you so you don't have to manually keep your .cabal file in sync. But unlike
-  ~hpack~ it does not require you to write your project spec in a [[https://github.com/sol/hpack#tool-integration][third party
-  format]] and so supports both Cabal and [[https://docs.haskellstack.org/en/stable/README/][~stack~]] workflows.
+  new and removed Haskell modules _and_ [[https://cabal.readthedocs.io/en/3.4/cabal-package.html#pkg-field-library-signatures][Backpack signatures]] in your project's
+  sources and exposes them for you so you don't have to manually keep your
+  .cabal file in sync. But unlike ~hpack~ it does not require you to write your
+  project spec in a [[https://github.com/sol/hpack#tool-integration][third party format]] and so supports both Cabal and [[https://docs.haskellstack.org/en/stable/README/][~stack~]]
+  workflows.
 
   Advantages of using this library over /hpack/:
   - Works great with both Cabal and ~stack~
@@ -15,10 +16,8 @@
     preprocessor that works on modules with the ~.myCustomExtension~ extension
     ~hpack~ will ignore them since it only knows about the preprocessors baked
     into Cabal.
-  - Since this library directly uses the Cabal API it is much easier to keep
-    pace with newer Cabal features, for example it is pretty straighforward to
-    extend it to auto expose [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=signatures#pkg-field-library-signatures][Backpack signatures]]. Only reason that feature
-    doesn't exist now is I'm mulling whether it is a good idea.
+  - Detects [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=signatures#pkg-field-library-signatures][Backpack signatures]] and generally is able to keep pace with the
+    newest features of Cabal because it directly uses the API.
   - Slightly less YAML in your life. :)
 
   Disadvantages over /hpack/:

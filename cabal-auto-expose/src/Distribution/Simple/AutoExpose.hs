@@ -9,11 +9,11 @@ import Control.Monad.Extra(ifM,notM)
 import Data.List(intercalate,nub)
 import Distribution.Compat.Lens((%~))
 import Distribution.ModuleName(ModuleName,fromString,validModuleComponent)
-import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library)
+import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData)
 import Distribution.Simple.BuildPaths(autogenPathsModuleName)
 import Distribution.Simple.PreProcess(knownSuffixHandlers)
-import Distribution.Simple.Setup(BuildFlags, ReplFlags, HscolourFlags, HaddockFlags, CopyFlags, InstallFlags, TestFlags, BenchmarkFlags, RegisterFlags, DoctestFlags)
-import Distribution.Simple.UserHooks(UserHooks,Args,hookedPreProcessors, buildHook,replHook,hscolourHook,doctestHook,haddockHook,copyHook,instHook,testHook,benchHook,regHook,unregHook)
+import Distribution.Simple.Setup(BuildFlags, ReplFlags, HscolourFlags, HaddockFlags, CopyFlags, InstallFlags, TestFlags, BenchmarkFlags, RegisterFlags, DoctestFlags, ConfigFlags)
+import Distribution.Simple.UserHooks(UserHooks,Args,hookedPreProcessors, buildHook,replHook,hscolourHook,doctestHook,haddockHook,copyHook,instHook,testHook,benchHook,regHook,unregHook,confHook)
 import Distribution.Simple.Utils(findPackageDesc)
 import Distribution.Types.LocalBuildInfo(LocalBuildInfo)
 import Distribution.Types.PackageDescription(PackageDescription)
@@ -24,9 +24,13 @@ import qualified Distribution.Simple(defaultMainWithHooks,simpleUserHooks)
 import qualified Distribution.Types.BuildInfo.Lens as L
 import qualified Distribution.Types.Library.Lens as L
 
--- | The supported Haskell source extensions, just 'hs' and 'lhs'
+-- | The supported Haskell source extensions, currently 'hs' and 'lhs'
 sourceExtensions :: [String]
 sourceExtensions = ["hs","lhs"]
+
+-- | Backpack signature extensions, currently 'hsig' and 'lhsig'
+hsigExtensions :: [String]
+hsigExtensions = ["hsig","lhsig"]
 
 -- | Search for file paths that look like valid modules and convert to the
 --   components to the Cabal internal 'ModuleName'.
@@ -55,7 +59,8 @@ moduleNamesToExpose extensions =
 -- @\/home\/user\/myproject\/src\/A\/B\/C.hs@ is returned as @A\/B\/C.hs@ so it can
 -- converted by 'moduleNamesToExpose' to a valid module name.
 getDirectoryContents
-  :: FilePath -- ^ Directory to search (path must be absolute)
+  :: HasCallStack
+  => FilePath -- ^ Directory to search (path must be absolute)
   -> [FilePath] -- ^ Paths to ignore (paths must be absolute)
   -> IO [FilePath] -- ^ File paths made relative to the search directory
 getDirectoryContents dir excludedDirs = do
@@ -75,15 +80,56 @@ getDirectoryContents dir excludedDirs = do
             (go fs (f:accum))
     go [] accum = pure accum
 
+-- | Captures the detected Haskell modules and signatures in a library
+data ExposedLib =
+  ExposedLib
+  { exposedLibModules :: [ModuleName]
+  , exposedLibSignatures :: [ModuleName]
+  }
+  deriving Show
+
+-- | The common pieces of 'GenericPackageDescription' and 'PackageDescription'
+-- which we need to auto detect Haskell modules /and/ signatures. We can't make
+-- do with just the 'PackageDescription' because the 'confHook' which
+-- instantiates the library with signatures only has access to
+-- 'GenericPackageDescription'.
+data PackageDescriptionSubset =
+  PackageDescriptionSubset
+  { packageDescriptionSubsetLibrary :: Maybe Library
+  , packageDescriptionSubsetSubLibraries :: [Library]
+  , packageDescriptionSubsetExecutables :: [Executable]
+  , packageDescriptionSubsetTestSuites :: [TestSuite]
+  , packageDescriptionSubsetBenchmarks :: [Benchmark]
+  }
+  deriving Show
+
+genericPackageDescriptionToSubset :: GenericPackageDescription -> PackageDescriptionSubset
+genericPackageDescriptionToSubset gpd =
+  PackageDescriptionSubset
+    (fmap condTreeData (condLibrary gpd))
+    (map (condTreeData . snd) (condSubLibraries gpd))
+    (map (condTreeData . snd) (condExecutables gpd))
+    (map (condTreeData . snd) (condTestSuites gpd))
+    (map (condTreeData . snd) (condBenchmarks gpd))
+
+packageDescriptionToSubset :: PackageDescription -> PackageDescriptionSubset
+packageDescriptionToSubset pd =
+  PackageDescriptionSubset
+    (library pd)
+    (subLibraries pd)
+    (executables pd)
+    (testSuites pd)
+    (benchmarks pd)
+
 -- | Source directories for all non-library components (benchmarks, executables
 -- etc.) so that we can exclude their modules if they appear inside the library's
 -- source directory
-nonLibraryHsSourcePaths :: PackageDescription -> [[FilePath]]
-nonLibraryHsSourcePaths pd =
+nonLibraryHsSourcePaths :: PackageDescriptionSubset -> [[FilePath]]
+nonLibraryHsSourcePaths pds =
   map hsSourceDirs $
-     (map buildInfo (executables pd))
-  ++ (map testBuildInfo (testSuites pd))
-  ++ (map benchmarkBuildInfo (benchmarks pd))
+     (map buildInfo (packageDescriptionSubsetExecutables pds))
+  ++ (map testBuildInfo (packageDescriptionSubsetTestSuites pds))
+  ++ (map benchmarkBuildInfo (packageDescriptionSubsetBenchmarks pds))
 
 -- | Associate each item in a list will it's left and right elements, eg.
 -- > indexWithNeighbors [1,2,3,4] == [(1,[2,3,4]),(2,[1,3,4]),(3,[1,2,4]),(4,[1,2,3])]
@@ -98,20 +144,15 @@ indexWithNeighbors (a:as) = reverse (go [] a as [])
     go ls x [] accum = (x,ls):accum
 indexWithNeighbors [] = []
 
--- | A wrapper around a list of 'ModuleName' for a more precise type
---
-newtype ExposedLib =
-  ExposedLib { exposedLibMainLib :: [ModuleName] }
-  deriving Show
-
 -- | Drill into the source trees for a component and find modules
 -- excluding the source trees for other components
 getExposedModules
-  :: [String] -- ^ Known Haskell and preprocessor extensions
+  :: HasCallStack
+  => [String] -- ^ Known Haskell and/or preprocessor extensions
   -> [FilePath] -- ^ The source trees for this component
   -> [[FilePath]] -- ^ The source trees for all the other components
   -> IO [ModuleName] -- ^ Detect modules in this component
-getExposedModules ppExts hsSrcDirs otherHsSrcDirs = do
+getExposedModules exts hsSrcDirs otherHsSrcDirs = do
   absHsSrcDirs <- mapM makeAbsolute hsSrcDirs
   absOtherHsSrcDirs <- mapM makeAbsolute (concat otherHsSrcDirs)
   contents <-
@@ -120,49 +161,81 @@ getExposedModules ppExts hsSrcDirs otherHsSrcDirs = do
           $ map (\(srcDir,otherSrcDirs) -> (srcDir,otherSrcDirs ++ absOtherHsSrcDirs))
           $ indexWithNeighbors absHsSrcDirs
         )
-  pure $ moduleNamesToExpose (sourceExtensions ++ ppExts) contents
+  pure $ moduleNamesToExpose exts contents
 
--- | Pull out the main library from the 'PackageDescription' of this
--- project and get a list of detected Haskell modules
-getExposedLibs
-  :: PackageDescription
+-- | Get a list of detected Haskell modules and signatures in the main library
+getExposedLib
+  :: HasCallStack
+  => PackageDescriptionSubset
   -> UserHooks -- ^ So we can grab the 'hookedPreProcessors' extensions
-  -> IO [ModuleName]
-getExposedLibs pd uhs =
+  -> IO ExposedLib
+getExposedLib pds uhs =
   let excluded =
-        map libSrcDir (subLibraries pd) ++ (nonLibraryHsSourcePaths pd)
+        map libSrcDir (packageDescriptionSubsetSubLibraries pds) ++ (nonLibraryHsSourcePaths pds)
       libExposedModules l =
-        getExposedModules ppExts (libSrcDir l) excluded
-  in maybe (pure []) libExposedModules (library pd)
+        getExposedModules (sourceExtensions ++ ppExts) (libSrcDir l) excluded
+      libExposedSignatures l =
+        getExposedModules hsigExtensions (libSrcDir l) excluded
+  in case (packageDescriptionSubsetLibrary pds) of
+       Nothing -> pure (ExposedLib [] [])
+       Just l -> pure ExposedLib <*> (libExposedModules l) <*> (libExposedSignatures l)
   where
     ppExts :: [String]
     ppExts = (nub . map fst) ((hookedPreProcessors uhs) ++ knownSuffixHandlers)
     libSrcDir :: Library -> [FilePath]
     libSrcDir = nub . hsSourceDirs . libBuildInfo
 
+-- | Since the @hs-source-dirs@ fields in a @.cabal@ file take a source tree
+-- path relative to the @.cabal@ file itself we need to make sure the current
+-- working directory in which to search for module detection is the directory in
+-- which the @.cabal@ file resides.
+withCabalFileDirectory
+  :: HasCallStack
+  => IO a -- ^ The IO action that auto detects modules & signatures
+  -> IO a
+withCabalFileDirectory action = do
+  cabalFilePath <- findPackageDesc "."
+  case cabalFilePath of
+    Left err -> error err
+    Right _ -> withCurrentDirectory "." action
+
+updateLibrary :: ExposedLib -> Library -> Library
+updateLibrary exposedLib =
+  (L.exposedModules %~ (nub . (++) (exposedLibModules exposedLib)))
+  . (L.signatures %~ (nub . (++) (exposedLibSignatures exposedLib)))
+
 -- | Update the 'PackageDescription' of this package to include auto detected
 -- library modules. Also just to be nice fill in the 'Paths_...' module in
 -- 'otherModules' field of the library's 'BuildInfo'.
 updatePackageDescription :: HasCallStack => PackageDescription -> UserHooks -> IO PackageDescription
-updatePackageDescription pd uhs = do
-  cabalFilePath <- findPackageDesc "."
-  case cabalFilePath of
-    Left err -> error err
-    Right _ ->
-      withCurrentDirectory "." $ do
-        exposedLibs <- getExposedLibs pd uhs
-        let newMainLibrary =
-             (L.libBuildInfo . L.otherModules %~ (nub . (++) [(autogenPathsModuleName pd)]))
-             . (L.exposedModules %~ (nub . (++) exposedLibs))
-        pure $
-          pd { library = fmap newMainLibrary (library pd) }
+updatePackageDescription pd uhs =
+  withCabalFileDirectory $ do
+    exposedLib <- getExposedLib (packageDescriptionToSubset pd) uhs
+    let newMainLibrary =
+         (L.libBuildInfo . L.otherModules %~ (nub . (++) [(autogenPathsModuleName pd)]))
+         . updateLibrary exposedLib
+    pure (pd { library = fmap newMainLibrary (library pd) })
 
--- | Modify a set of 'UserHooks' so that all relevant hooks see a 'PackageDescription' with
--- auto detected modules filled in.
+-- | Update the 'GenericPackageDescription' of this package so the library can
+-- be properly instantiated with Backpack signatures at configure time when the
+-- 'confHook' is run.
+updateGenericPackageDescription :: HasCallStack => GenericPackageDescription -> UserHooks -> IO GenericPackageDescription
+updateGenericPackageDescription gpd uhs =
+  let updateCondTreeLib exposedLib condLib =
+        condLib { condTreeData = updateLibrary exposedLib (condTreeData condLib) }
+  in withCabalFileDirectory $ do
+      exposedLib <- getExposedLib (genericPackageDescriptionToSubset gpd) uhs
+      pure $
+        gpd { condLibrary = fmap (updateCondTreeLib exposedLib) (condLibrary gpd) }
+
+-- | Modify a set of 'UserHooks' so that all relevant hooks see a
+-- 'PackageDescription' or 'GenericPackageDescription' with auto detected
+-- modules and signatures filled in.
 autoExposeHooks :: UserHooks -> UserHooks
 autoExposeHooks userHooks =
   userHooks
-  { buildHook = bh
+  { confHook = confH
+  , buildHook = bh
   , replHook = rh
   , hscolourHook = hscolourH
   , doctestHook = dth
@@ -175,6 +248,10 @@ autoExposeHooks userHooks =
   , unregHook = unregH
   }
   where
+    confH :: (GenericPackageDescription, HookedBuildInfo) -> ConfigFlags -> IO LocalBuildInfo
+    confH (gpd,hbi) cfs = do
+      newGpd <- updateGenericPackageDescription gpd userHooks
+      (confHook userHooks) (newGpd,hbi) cfs
     bh :: PackageDescription -> LocalBuildInfo -> UserHooks -> BuildFlags -> IO ()
     bh pd lbi uhs fs = do
       newPd <- updatePackageDescription pd uhs
