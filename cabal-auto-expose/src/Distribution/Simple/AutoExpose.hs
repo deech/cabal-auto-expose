@@ -1,6 +1,11 @@
 -- | Import this module in your @Setup.hs@ to auto detect library modules in
 -- your project The API does not conceal it's internals but in most cases you
--- should only need 'defaultMain' or 'defaultMainWithHooks'.
+-- should only need the functions and datatype under
+-- 'Quick Start Functions' ("Distribution.Simple.AutoExpose#QuickStartFunctions").
+-- For more granular access the ones under
+-- 'Internal Functions' ("Distribution.Simple.AutoExpose#InternalFunctions") are
+-- available but subject to change.
+
 module Distribution.Simple.AutoExpose where
 
 import Control.Exception(catch,IOException)
@@ -28,13 +33,61 @@ import Distribution.Types.PackageId(PackageIdentifier(pkgName,pkgVersion))
 import Distribution.Types.Version()
 import Distribution.PackageDescription.PrettyPrint(writeGenericPackageDescription)
 
--- | The supported Haskell source extensions, currently 'hs' and 'lhs'
-sourceExtensions :: [String]
-sourceExtensions = ["hs","lhs"]
+-- * Quick Start Functions #QuickStartFunctions#
 
--- | Backpack signature extensions, currently 'hsig' and 'lhsig'
-hsigExtensions :: [String]
-hsigExtensions = ["hsig","lhsig"]
+-- | The common case top level function where this library is the only custom part of your project
+--
+-- > import qualified Distribution.Simple.AutoExpose
+-- > main = AutoExpose.defaultMain
+defaultMain :: IO ()
+defaultMain = defaultMainWithHooks Distribution.Simple.simpleUserHooks
+
+-- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main'
+--
+-- > import qualified Distribution.Simple.AutoExpose as AutoExpose
+-- > main = AutoExpose.defaultMainWithHooks myHooks
+defaultMainWithHooks :: UserHooks -> IO ()
+defaultMainWithHooks uhs = Distribution.Simple.defaultMainWithHooks (autoExposeHooks Nothing uhs)
+
+-- | The common case top level function where this library is the only custom part of your project
+--
+-- It also generates an explicit Cabal file at @\/<system-temp-directory>\/<package-name>-<package-version>-generated.cabal@
+--
+-- > import qualified Distribution.Simple.AutoExpose
+-- > main = AutoExpose.defaultMainGenerateCabal
+defaultMainGenerateCabal :: IO ()
+defaultMainGenerateCabal = do
+  defaultCabalWriter <- defaultWriteGeneratedCabal
+  defaultMainWithHooksGenerateCabal defaultCabalWriter Distribution.Simple.simpleUserHooks
+
+-- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main' and also
+-- provide a way to generate an explicit Cabal file.
+--
+-- > import qualified Distribution.Simple.AutoExpose as AutoExpose
+-- > main = do
+-- >   cabalWriter <- defaultWriteGeneratedCabal
+-- >   AutoExpose.defaultMainWithHooksGenerateCabal cabalWriter myHooks
+defaultMainWithHooksGenerateCabal :: WriteGeneratedCabal -> UserHooks -> IO ()
+defaultMainWithHooksGenerateCabal writeGeneratedCabal uhs =
+  Distribution.Simple.defaultMainWithHooks (autoExposeHooks (Just writeGeneratedCabal) uhs)
+
+-- | A datatype that wraps a function that outputs the name of the
+-- explicity generated Cabal file and an absolute path to a directory
+-- into which to write it.
+data WriteGeneratedCabal =
+  WriteGeneratedCabal
+  { writeGeneratedCabalPath :: FilePath
+  , writeGeneratedCabalName :: GenericPackageDescription -> FilePath
+  }
+
+-- | Write the Cabal file to the system temp directory by default using
+-- 'defaultGeneratedCabalName' for the filename.
+defaultWriteGeneratedCabal :: IO WriteGeneratedCabal
+defaultWriteGeneratedCabal = do
+  tmp <- getTemporaryDirectory
+  pure (WriteGeneratedCabal tmp defaultGeneratedCabalName)
+
+-- * Internal Functions #InternalFunctions#
 
 -- | Search for file paths that look like valid modules and convert to the
 --   components to the Cabal internal 'ModuleName'.
@@ -203,6 +256,7 @@ withCabalFileDirectory action = do
     Left err -> error err
     Right _ -> withCurrentDirectory "." action
 
+-- | Update the exposed modules and signatures of a 'Library'
 updateLibrary :: ExposedLib -> Library -> Library
 updateLibrary exposedLib =
   (L.exposedModules %~ (nub . (++) (exposedLibModules exposedLib)))
@@ -232,15 +286,6 @@ updateGenericPackageDescription gpd uhs =
       pure $
         gpd { condLibrary = fmap (updateCondTreeLib exposedLib) (condLibrary gpd) }
 
--- | A datatype that wraps a function that outputs the name of the
--- explicity generated Cabal file and an absolute path to a directory
--- into which to write it.
-data WriteGeneratedCabal =
-  WriteGeneratedCabal
-  { writeGeneratedCabalPath :: FilePath
-  , writeGeneratedCabalName :: GenericPackageDescription -> FilePath
-  }
-
 -- | The default name to use when generating an explicit Cabal file
 -- It defaults to @<package-name>-<package-version>-generated.cabal@
 defaultGeneratedCabalName  :: GenericPackageDescription -> FilePath
@@ -252,14 +297,6 @@ defaultGeneratedCabalName gpd =
      ++ "-generated"
      <.> "cabal"
 
--- | Write the Cabal file to the system temp directory by default
-defaultWriteGeneratedCabal :: IO WriteGeneratedCabal
-defaultWriteGeneratedCabal = do
-  tmp <- getTemporaryDirectory
-  pure (WriteGeneratedCabal tmp defaultGeneratedCabalName)
-
--- | A 'confHook' that can optionally write a Cabal file with all auto detected
--- modules made explicit to a user specified path.
 autoExposeConfHook
   :: UserHooks
   -> Maybe WriteGeneratedCabal
@@ -343,38 +380,11 @@ autoExposeHooks writeGeneratedCabalM userHooks =
       newPd <- updatePackageDescription pd uhs
       (unregHook userHooks) newPd lbi uhs fs
 
--- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main' and also
--- provide a way to generate an explicit Cabal file.
---
--- > import qualified Distribution.Simple.AutoExpose as AutoExpose
--- > main = do
--- >   cabalWriter <- defaultWriteGeneratedCabal
--- >   AutoExpose.defaultMainWithHooksGenerateCabal cabalWriter myHooks
-defaultMainWithHooksGenerateCabal :: WriteGeneratedCabal -> UserHooks -> IO ()
-defaultMainWithHooksGenerateCabal writeGeneratedCabal uhs =
-  Distribution.Simple.defaultMainWithHooks (autoExposeHooks (Just writeGeneratedCabal) uhs)
+-- | The supported Haskell source extensions, currently 'hs' and 'lhs'
+sourceExtensions :: [String]
+sourceExtensions = ["hs","lhs"]
 
--- | The common case top level function where this library is the only custom part of your project
---
--- It also generates an explicit Cabal file at @\/<system-temp-directory>\/<package-name>-<package-version>-generated.cabal@
---
--- > import qualified Distribution.Simple.AutoExpose
--- > main = AutoExpose.defaultMainGenerateCabal
-defaultMainGenerateCabal :: IO ()
-defaultMainGenerateCabal = do
-  defaultCabalWriter <- defaultWriteGeneratedCabal
-  defaultMainWithHooksGenerateCabal defaultCabalWriter Distribution.Simple.simpleUserHooks
+-- | Backpack signature extensions, currently 'hsig' and 'lhsig'
+hsigExtensions :: [String]
+hsigExtensions = ["hsig","lhsig"]
 
--- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main'
---
--- > import qualified Distribution.Simple.AutoExpose as AutoExpose
--- > main = AutoExpose.defaultMainWithHooks myHooks
-defaultMainWithHooks :: UserHooks -> IO ()
-defaultMainWithHooks uhs = Distribution.Simple.defaultMainWithHooks (autoExposeHooks Nothing uhs)
-
--- | The common case top level function where this library is the only custom part of your project
---
--- > import qualified Distribution.Simple.AutoExpose
--- > main = AutoExpose.defaultMain
-defaultMain :: IO ()
-defaultMain = defaultMainWithHooks Distribution.Simple.simpleUserHooks

@@ -9,7 +9,7 @@
   For debugging ease and integration with third party tools like [[https://github.com/NixOS/cabal2nix][cabal2nix]] you
   can also optionally generate an Cabal to a location of your choice with the
   modules and signatures explicitly listed in ~exposed-modules~ and
-  ~signatures~. For more information see 'Generating A Cabal File' below.
+  ~signatures~. For more information see [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose#generate-a-cabal-file][Generate A Cabal File]] below.
 
   Advantages of using this library over /hpack/:
   - Works great with both Cabal and ~stack~
@@ -35,8 +35,12 @@
     less likely to change.
   - Since ~hpack~ simply generates the .cabal file you don't need to incur a
     build time dependency which forces the project to use a custom ~Setup.hs~
-    file ( more on that in 'Quick Start' ) and at the end of the day is yet
+    file ( more on that in [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose#quick-start][Quick Start]] ) and at the end of the day is yet
     another dependency.
+
+  Another hard limitation you might want to know about is this library cannot be
+  used with Cabal's new [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=internal%20libraries#pkg-section-library-library][sub-library]] feature because mixing sub-libraries and
+  @build-type: Custom@ is [[https://github.com/haskell/cabal/issues/6305][not currently supported by Cabal]].
     
   To get a better feel for how it all works check out the [[https://github.com/deech/cabal-auto-expose/blob/master/auto-expose-example-project/auto-expose-test-project.cabal#L1][demo]].
 
@@ -87,15 +91,16 @@
    file isn't touched, all changes are made to Cabal API data structures.
    
 ** Generate A Cabal File
-   As part of the building your package you also generate a Cabal file where all the exposed modules and
-   signatures are explicitly listed. This makes it much easier to debug your project but the generated file
-   can also be consumed by tools like [[https://github.com/NixOS/cabal2nix][cabal2nix]] for automatically generated Nix derivations.
+   As part of the building your package you can also generate a Cabal file where
+   all the exposed modules and signatures are explicitly listed. This makes it
+   much easier to debug your project but it can also be consumed by tools like
+   [[https://github.com/NixOS/cabal2nix][cabal2nix]] for Nix derivations.
 
    The default path of the generated file is ~/<system-temp-directory>/<package-name>-<package-version>-generated.cabal~.
    For example, on Linux a package named ~awesome-package~ at version ~0.1.0.0~ will write the Cabal file to 
    ~/tmp/awesome-package-0.1.0.0-generated.cabal~
    
-   The only difference is your ~Setup.hs~ is now:
+   The only difference is your ~Setup.hs~ uses @defaultMainGenerateCabal@ instead of @defaultMain@:
    #+BEGIN_EXAMPLE
    import Distribution.Simple.AutoExpose as AutoExpose
    
@@ -108,4 +113,3 @@
    Writing generated Cabal file:
    /tmp/awesome-package-0.1.0.0-generated.cabal
    #+END_EXAMPLE
-   
