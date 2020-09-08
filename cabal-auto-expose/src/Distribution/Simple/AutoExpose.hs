@@ -5,24 +5,28 @@ module Distribution.Simple.AutoExpose where
 
 import Control.Exception(catch,IOException)
 import Control.Monad((>=>),filterM)
-import Control.Monad.Extra(ifM,notM)
+import Control.Monad.Extra(ifM,notM,whenJust)
 import Data.List(intercalate,nub)
 import Distribution.Compat.Lens((%~))
 import Distribution.ModuleName(ModuleName,fromString,validModuleComponent)
-import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData)
+import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData,packageDescription)
 import Distribution.Simple.BuildPaths(autogenPathsModuleName)
 import Distribution.Simple.PreProcess(knownSuffixHandlers)
-import Distribution.Simple.Setup(BuildFlags, ReplFlags, HscolourFlags, HaddockFlags, CopyFlags, InstallFlags, TestFlags, BenchmarkFlags, RegisterFlags, DoctestFlags, ConfigFlags)
+import Distribution.Simple.Setup(BuildFlags, ReplFlags, HscolourFlags, HaddockFlags, CopyFlags, InstallFlags, TestFlags, BenchmarkFlags, RegisterFlags, DoctestFlags, ConfigFlags,fromFlag, configVerbosity)
 import Distribution.Simple.UserHooks(UserHooks,Args,hookedPreProcessors, buildHook,replHook,hscolourHook,doctestHook,haddockHook,copyHook,instHook,testHook,benchHook,regHook,unregHook,confHook)
-import Distribution.Simple.Utils(findPackageDesc)
+import Distribution.Simple.Utils(findPackageDesc,notice)
 import Distribution.Types.LocalBuildInfo(LocalBuildInfo)
-import Distribution.Types.PackageDescription(PackageDescription)
+import Distribution.Types.PackageDescription(PackageDescription,package)
 import GHC.Stack(HasCallStack)
-import System.Directory(makeAbsolute,listDirectory,doesDirectoryExist,withCurrentDirectory,pathIsSymbolicLink)
-import System.FilePath(splitDirectories, dropExtension, takeExtension,equalFilePath,makeRelative)
+import System.Directory(makeAbsolute,listDirectory,doesDirectoryExist,withCurrentDirectory,pathIsSymbolicLink,getTemporaryDirectory)
+import System.FilePath(splitDirectories, dropExtension, takeExtension,equalFilePath,makeRelative,(</>),(<.>))
 import qualified Distribution.Simple(defaultMainWithHooks,simpleUserHooks)
 import qualified Distribution.Types.BuildInfo.Lens as L
 import qualified Distribution.Types.Library.Lens as L
+import Distribution.Pretty(prettyShow)
+import Distribution.Types.PackageId(PackageIdentifier(pkgName,pkgVersion))
+import Distribution.Types.Version()
+import Distribution.PackageDescription.PrettyPrint(writeGenericPackageDescription)
 
 -- | The supported Haskell source extensions, currently 'hs' and 'lhs'
 sourceExtensions :: [String]
@@ -228,13 +232,59 @@ updateGenericPackageDescription gpd uhs =
       pure $
         gpd { condLibrary = fmap (updateCondTreeLib exposedLib) (condLibrary gpd) }
 
+-- | A datatype that wraps a function that outputs the name of the
+-- explicity generated Cabal file and an absolute path to a directory
+-- into which to write it.
+data WriteGeneratedCabal =
+  WriteGeneratedCabal
+  { writeGeneratedCabalPath :: FilePath
+  , writeGeneratedCabalName :: GenericPackageDescription -> FilePath
+  }
+
+-- | The default name to use when generating an explicit Cabal file
+-- It defaults to @<package-name>-<package-version>-generated.cabal@
+defaultGeneratedCabalName  :: GenericPackageDescription -> FilePath
+defaultGeneratedCabalName gpd =
+  let gpdPkg = package . packageDescription
+  in (prettyShow (pkgName (gpdPkg gpd)))
+     ++ "-"
+     ++ (prettyShow (pkgVersion (gpdPkg gpd)))
+     ++ "-generated"
+     <.> "cabal"
+
+-- | Write the Cabal file to the system temp directory by default
+defaultWriteGeneratedCabal :: IO WriteGeneratedCabal
+defaultWriteGeneratedCabal = do
+  tmp <- getTemporaryDirectory
+  pure (WriteGeneratedCabal tmp defaultGeneratedCabalName)
+
+-- | A 'confHook' that can optionally write a Cabal file with all auto detected
+-- modules made explicit to a user specified path.
+autoExposeConfHook
+  :: UserHooks
+  -> Maybe WriteGeneratedCabal
+  -> (GenericPackageDescription, HookedBuildInfo)
+  -> ConfigFlags
+  -> IO LocalBuildInfo
+autoExposeConfHook userHooks writeGeneratedCabalM (gpd,hbi) cfs = do
+  newGpd <- updateGenericPackageDescription gpd userHooks
+  whenJust writeGeneratedCabalM
+    (\(WriteGeneratedCabal outputDir generatedCabalName) -> do
+        let f = outputDir </> (generatedCabalName newGpd)
+        notice (fromFlag (configVerbosity cfs)) ("Writing generated Cabal file: " ++ f)
+        writeGenericPackageDescription f newGpd
+    )
+  (confHook userHooks) (newGpd,hbi) cfs
+
 -- | Modify a set of 'UserHooks' so that all relevant hooks see a
 -- 'PackageDescription' or 'GenericPackageDescription' with auto detected
 -- modules and signatures filled in.
-autoExposeHooks :: UserHooks -> UserHooks
-autoExposeHooks userHooks =
+--
+-- Also optionally write an explicit Cabal file at 'confHook' time.
+autoExposeHooks :: Maybe WriteGeneratedCabal -> UserHooks -> UserHooks
+autoExposeHooks writeGeneratedCabalM userHooks =
   userHooks
-  { confHook = confH
+  { confHook = autoExposeConfHook userHooks writeGeneratedCabalM
   , buildHook = bh
   , replHook = rh
   , hscolourHook = hscolourH
@@ -248,10 +298,6 @@ autoExposeHooks userHooks =
   , unregHook = unregH
   }
   where
-    confH :: (GenericPackageDescription, HookedBuildInfo) -> ConfigFlags -> IO LocalBuildInfo
-    confH (gpd,hbi) cfs = do
-      newGpd <- updateGenericPackageDescription gpd userHooks
-      (confHook userHooks) (newGpd,hbi) cfs
     bh :: PackageDescription -> LocalBuildInfo -> UserHooks -> BuildFlags -> IO ()
     bh pd lbi uhs fs = do
       newPd <- updatePackageDescription pd uhs
@@ -297,12 +343,34 @@ autoExposeHooks userHooks =
       newPd <- updatePackageDescription pd uhs
       (unregHook userHooks) newPd lbi uhs fs
 
+-- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main' and also
+-- provide a way to generate an explicit Cabal file.
+--
+-- > import qualified Distribution.Simple.AutoExpose as AutoExpose
+-- > main = do
+-- >   cabalWriter <- defaultWriteGeneratedCabal
+-- >   AutoExpose.defaultMainWithHooksGenerateCabal cabalWriter myHooks
+defaultMainWithHooksGenerateCabal :: WriteGeneratedCabal -> UserHooks -> IO ()
+defaultMainWithHooksGenerateCabal writeGeneratedCabal uhs =
+  Distribution.Simple.defaultMainWithHooks (autoExposeHooks (Just writeGeneratedCabal) uhs)
+
+-- | The common case top level function where this library is the only custom part of your project
+--
+-- It also generates an explicit Cabal file at @\/<system-temp-directory>\/<package-name>-<package-version>-generated.cabal@
+--
+-- > import qualified Distribution.Simple.AutoExpose
+-- > main = AutoExpose.defaultMainGenerateCabal
+defaultMainGenerateCabal :: IO ()
+defaultMainGenerateCabal = do
+  defaultCabalWriter <- defaultWriteGeneratedCabal
+  defaultMainWithHooksGenerateCabal defaultCabalWriter Distribution.Simple.simpleUserHooks
+
 -- | If you have already using custom 'UserHooks' use this in your Setup.hs's 'main'
 --
 -- > import qualified Distribution.Simple.AutoExpose as AutoExpose
 -- > main = AutoExpose.defaultMainWithHooks myHooks
 defaultMainWithHooks :: UserHooks -> IO ()
-defaultMainWithHooks uhs = Distribution.Simple.defaultMainWithHooks (autoExposeHooks uhs)
+defaultMainWithHooks uhs = Distribution.Simple.defaultMainWithHooks (autoExposeHooks Nothing uhs)
 
 -- | The common case top level function where this library is the only custom part of your project
 --

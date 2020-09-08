@@ -3,3 +3,4 @@ stack.yaml.lock
 dist-newstyle/
 /cabal.project.local
 /cabal.project.local~
+/auto-expose-example-project/cabal.project.local
