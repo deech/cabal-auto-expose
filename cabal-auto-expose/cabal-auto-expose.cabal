@@ -7,6 +7,7 @@ category: distribution,bundle,modules,library
 homepage: https://github.com/deech/cabal-auto-expose#readme
 bug-reports: https://github.com/deech/cabal-auto-expose/issues
 author: Aditya Siram
+maintainer: Aditya Siram
 copyright: 2020 Aditya Siram
 license: MIT
 license-file: LICENSE
