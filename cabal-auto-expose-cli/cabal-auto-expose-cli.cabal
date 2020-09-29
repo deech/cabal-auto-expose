@@ -1,0 +1,29 @@
+cabal-version: 1.12
+name: cabal-auto-expose-cli
+version: 0.1.0.0
+synopsis: A command line interface to 'cabal-auto-expose'
+category: distributed,bundled,modules,cli
+homepage: https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose-cli#readme
+bug-reports: https://github.com/deech/cabal-auto-expose/issues
+author: Aditya Siram
+maintainer: Aditya Siram
+copyright: 2020 Aditya Siramthe following extensionsthe following extensions
+license: MIT
+license-file: LICENSE
+build-type: Simple
+extra-source-files: README.org
+source-repository head
+  type: git
+  location: https://github.com/deech/cabal-auto-expose
+  subdir: cabal-auto-expose-cli
+executable cabal-auto-expose
+  main-is: Main.hs
+  ghc-options: -Wall
+  build-depends:
+    Cabal >= 3.2.0.0 && < 3.5.0.0,
+    cabal-auto-expose >= 0.1.0.0,
+    base >=4.14 && <4.15,
+    filepath >= 1.4.2.1 && < 1.5,
+    directory >= 1.3.6.1 && < 1.4,
+    optparse-applicative >= 0.16.0.0 && < 0.17.0.0
+  default-language: Haskell2010

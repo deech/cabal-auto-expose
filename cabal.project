@@ -1,3 +1,4 @@
 packages:
   cabal-auto-expose/
+  cabal-auto-expose-cli/
   auto-expose-example-project/

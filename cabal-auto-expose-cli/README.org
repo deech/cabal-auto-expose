@@ -1,0 +1,47 @@
+* cabal-auto-expose-cli
+  /cabal-auto-expose/ is the command line analog of the [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose#cabal-auto-expose][cabal-auto-expose]]
+  library; you can either point it at or run it the root of at an existing
+  Haskell project and it will read the existing ~.cabal~ file and output one to
+  ~stdout~ with Haskell modules and [[https://cabal.readthedocs.io/en/3.4/cabal-package.html#pkg-field-library-signatures][Backpack signature files]] explicitly exposed.
+  
+** Motivation
+   The library version of this CLI tool is more powerful but requires a [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose/README.org#L56][custom
+   setup]] which is fine for custom builds but most Cabal and Stack projects are
+   vanilla [[https://cabal.readthedocs.io/en/latest/cabal-package.html?highlight=build%20type#pkg-field-build-type][Simple]] builds and for those this tool is ideal; simply run it at the
+   root of (or point it at) a normal Haskell project with no changes and it
+   spits out a valid ~.cabal~ file to ~stdout~ which can be piped anywhere.
+   
+** Quick Start
+   The easiest way to get started is run this app at the root of your Haskell project
+   with no arguments, as an example this is the output of running it at the root of
+   the [[https://github.com/deech/cabal-auto-expose/blob/master/auto-expose-example-project/][example project]] with the redundant portions elided:
+   #+BEGIN_SRC EXAMPLE
+   > cabal-auto-expose
+   cabal-version: >=2.0
+   name:          auto-expose-example-project
+   ...
+   library
+       exposed-modules:
+           Lib
+           Lib.Internal.Internal
+   
+       signatures:       LibSig
+   ...
+   executable example-exe
+       ...
+   
+   test-suite example-test-suite
+       ...
+   
+   benchmark example-benchmark
+       ...
+   #+END_SRC EXAMPLE
+
+   As you can see the [[https://github.com/deech/cabal-auto-expose/blob/master/auto-expose-example-project/auto-expose-example-project.cabal#L21][original ~.cabal~ file]] did not have any ~exposed-modules~ or ~signatures~ but the result of
+   ~cabal-auto-expose~ does. This is a valid ~.cabal~ file and can replace the existing one or be piped to a tool like
+   [[https://github.com/NixOS/cabal2nix][cabal2nix]]:
+   #+BEGIN_SRC EXAMPLE
+   > cabal-auto-expose > ./auto-expose-example-project.cabal
+   #+END_SRC EXAMPLE
+
+** 

@@ -12,6 +12,9 @@ copyright: 2020 Aditya Siram
 license: MIT
 license-file: LICENSE
 build-type: Simple
+extra-source-files:
+  testProjects/**/*.cabal
+
 source-repository head
   type: git
   location: https://github.com/deech/cabal-auto-expose

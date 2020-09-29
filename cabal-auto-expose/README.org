@@ -81,10 +81,10 @@
 
    Due to an annoying limitation with Cabal on subsequent builds you'll have to:
    #+BEGIN_EXAMPLE
-   cabal build --only-reconfigure && cabal build
+   cabal build --only-configure && cabal build
    #+END_EXAMPLE
    
-   ~cabal build --only-reconfigure~ forces Cabal to use this library to check
+   ~cabal build --only-configure~ forces Cabal to use this library to check
    for any new or removed modules and internally regenerate the
    [[https://hackage.haskell.org/package/Cabal-3.2.0.0/docs/Distribution-PackageDescription.html#t:PackageDescription][PackageDescription]] so they are properly recompiled; the normal ~cabal build~
    will work fine if nothing as been added/removed. To clarify your ~.cabal~
@@ -100,7 +100,7 @@
    For example, on Linux a package named ~awesome-package~ at version ~0.1.0.0~ will write the Cabal file to 
    ~/tmp/awesome-package-0.1.0.0-generated.cabal~
    
-   The only difference is your ~Setup.hs~ uses @defaultMainGenerateCabal@ instead of @defaultMain@:
+   The only difference is your ~Setup.hs~ uses ~defaultMainGenerateCabal~ instead of ~defaultMain~:
    #+BEGIN_EXAMPLE
    import Distribution.Simple.AutoExpose as AutoExpose
    

@@ -1,2 +1,5 @@
 * cabal-auto-expose
-  The [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose][README]] is in the ~cabal-auto-expose~ sub project.
+  This project consists of two sub-projects:
+  - [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose-cli][cabal-auto-expose-cli]]: A command line tool that auto detects Haskell modules and [[https://cabal.readthedocs.io/en/3.4/cabal-package.html#pkg-field-library-signatures][Backpack signature files]] in a normal project and outputs a ~.cabal~ file which can replace the existing one.
+  - [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose][cabal-auto-expose]]: a build time library that does the same but can be used with [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose/README.org#L56][custom setup]] Haskell projects.
+  When in doubt you probably want [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose-cli][cabal-auto-expose-cli]]
