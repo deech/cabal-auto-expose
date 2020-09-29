@@ -21,7 +21,7 @@ executable cabal-auto-expose
   ghc-options: -Wall
   build-depends:
     Cabal >= 3.2.0.0 && < 3.5.0.0,
-    cabal-auto-expose >= 0.1.0.0,
+    cabal-auto-expose >= 0.1.0.1,
     base >=4.14 && <4.15,
     filepath >= 1.4.2.1 && < 1.5,
     directory >= 1.3.6.1 && < 1.4,
