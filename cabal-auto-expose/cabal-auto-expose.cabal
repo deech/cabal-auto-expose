@@ -1,6 +1,6 @@
 cabal-version: 1.12
 name: cabal-auto-expose
-version: 0.1.0.1
+version: 0.1.0.2
 synopsis: Build time library that autodetects exposed modules
 description: Build time library used with a custom Setup.hs that autodetects exposed modules in the source directories of each build artifact.
 category: distribution,bundle,modules,library
@@ -12,7 +12,8 @@ copyright: 2020 Aditya Siram
 license: MIT
 license-file: LICENSE
 build-type: Simple
-                          
+data-dir: testProjects
+
 source-repository head
   type: git
   location: https://github.com/deech/cabal-auto-expose
@@ -33,3 +34,14 @@ library
     filepath,
     directory,
     extra >= 1.7.7 && < 1.8
+
+test-suite cabal-auto-expose-tests
+  type: exitcode-stdio-1.0
+  main-is: Test.hs
+  other-modules: Paths_cabal_auto_expose
+  build-depends:
+    base >= 4.14 && < 4.15,
+    Cabal >= 3.2.0.0 && < 3.5.0.0,
+    cabal-auto-expose == 0.1.0.2,
+    hspec >= 2.7.4 && < 2.8,
+    filepath

@@ -36,11 +36,13 @@
   - Since ~hpack~ simply generates the .cabal file you don't need to incur a
     build time dependency which forces the project to use a custom ~Setup.hs~
     file ( more on that in [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose#quick-start][Quick Start]] ) and at the end of the day is yet
-    another dependency.
+    another dependency. If you use [[https://github.com/deech/cabal-auto-expose/tree/master/cabal-auto-expose-cli][command line version]] this is no longer
+    an issue.
 
-  Another hard limitation you might want to know about is this library cannot be
-  used with Cabal's new [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=internal%20libraries#pkg-section-library-library][sub-library]] feature because mixing sub-libraries and
-  @build-type: Custom@ is [[https://github.com/haskell/cabal/issues/6305][not currently supported by Cabal]].
+  Another hard limitation is this library cannot be used with Cabal's new
+  [[https://cabal.readthedocs.io/en/3.4/cabal-package.html?highlight=internal%20libraries#pkg-section-library-library][sub-library]] feature because mixing sub-libraries and @build-type: Custom@ is
+  [[https://github.com/haskell/cabal/issues/6305][not currently supported by Cabal]]. For [[https://cabal.readthedocs.io/en/latest/cabal-package.html?highlight=Simple#example-a-package-containing-a-simple-library][simple builds]] the [[https://github.com/deech/cabal-auto-expose/blob/master/cabal-auto-expose-cli/README.org#L1][command line app]] works
+  pretty well.
     
   To get a better feel for how it all works check out the [[https://github.com/deech/cabal-auto-expose/blob/master/auto-expose-example-project/auto-expose-test-project.cabal#L1][demo]].
 
@@ -50,7 +52,9 @@
    
    Adding a build time dependency requires setting the ~build-type~ of your
    project to ~Custom~ and adding a /custom-setup/ stanza. For example if your
-   project is called ~my-awesome-project~ add this to ~my-awesome-project.cabal~:
+   project is called ~my-awesome-project~ add this to
+   ~my-awesome-project.cabal~:
+   
    #+BEGIN_EXAMPLE
    ...
    build-type: Custom
@@ -64,7 +68,8 @@
    ...
    #+END_EXAMPLE
 
-   At the root of ~my-awesome-project~ create a ~Setup.hs~ file with the contents:
+   At the root of ~my-awesome-project~ create a ~Setup.hs~ file with the
+   contents:
    #+BEGIN_EXAMPLE
    import Distribution.Simple.AutoExpose as AutoExpose
    
@@ -84,11 +89,11 @@
    cabal build --only-configure && cabal build
    #+END_EXAMPLE
    
-   ~cabal build --only-configure~ forces Cabal to use this library to check
-   for any new or removed modules and internally regenerate the
-   [[https://hackage.haskell.org/package/Cabal-3.2.0.0/docs/Distribution-PackageDescription.html#t:PackageDescription][PackageDescription]] so they are properly recompiled; the normal ~cabal build~
-   will work fine if nothing as been added/removed. To clarify your ~.cabal~
-   file isn't touched, all changes are made to Cabal API data structures.
+   ~cabal build --only-configure~ forces Cabal to use this library to check for
+   any new or removed modules and internally regenerate the [[https://hackage.haskell.org/package/Cabal-3.2.0.0/docs/Distribution-PackageDescription.html#t:PackageDescription][PackageDescription]]
+   so they are properly recompiled; the normal ~cabal build~ will work fine if
+   nothing as been added/removed. To clarify your ~.cabal~ file isn't touched,
+   all changes are made to Cabal API data structures.
    
 ** Generate A Cabal File
    As part of the building your package you can also generate a Cabal file where
@@ -96,9 +101,10 @@
    much easier to debug your project but it can also be consumed by tools like
    [[https://github.com/NixOS/cabal2nix][cabal2nix]] for Nix derivations.
 
-   The default path of the generated file is ~/<system-temp-directory>/<package-name>-<package-version>-generated.cabal~.
-   For example, on Linux a package named ~awesome-package~ at version ~0.1.0.0~ will write the Cabal file to 
-   ~/tmp/awesome-package-0.1.0.0-generated.cabal~
+   The default path of the generated file is
+   ~/<system-temp-directory>/<package-name>-<package-version>-generated.cabal~.
+   For example, on Linux a package named ~awesome-package~ at version ~0.1.0.0~
+   will write the Cabal file to ~/tmp/awesome-package-0.1.0.0-generated.cabal~
    
    The only difference is your ~Setup.hs~ uses ~defaultMainGenerateCabal~ instead of ~defaultMain~:
    #+BEGIN_EXAMPLE

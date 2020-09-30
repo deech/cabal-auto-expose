@@ -12,9 +12,13 @@ import Control.Exception(catch,IOException)
 import Control.Monad((>=>),filterM)
 import Control.Monad.Extra(ifM,notM,whenJust)
 import Data.List(intercalate,nub)
+import Data.Maybe(fromMaybe)
 import Distribution.Compat.Lens((%~),(&))
 import Distribution.ModuleName(ModuleName,fromString,validModuleComponent)
 import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData,packageDescription)
+import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
+import Distribution.PackageDescription.PrettyPrint(writeGenericPackageDescription)
+import Distribution.Pretty(prettyShow)
 import Distribution.Simple.BuildPaths(autogenPathsModuleName)
 import Distribution.Simple.PreProcess(knownSuffixHandlers)
 import Distribution.Simple.Setup(BuildFlags, ReplFlags, HscolourFlags, HaddockFlags, CopyFlags, InstallFlags, TestFlags, BenchmarkFlags, RegisterFlags, DoctestFlags, ConfigFlags,fromFlag, configVerbosity)
@@ -22,17 +26,15 @@ import Distribution.Simple.UserHooks(UserHooks,Args,hookedPreProcessors, buildHo
 import Distribution.Simple.Utils(findPackageDesc,notice)
 import Distribution.Types.LocalBuildInfo(LocalBuildInfo)
 import Distribution.Types.PackageDescription(PackageDescription,package)
+import Distribution.Types.PackageId(PackageIdentifier(pkgName,pkgVersion))
+import Distribution.Types.Version()
+import Distribution.Verbosity(silent)
 import GHC.Stack(HasCallStack)
 import System.Directory(makeAbsolute,listDirectory,doesDirectoryExist,withCurrentDirectory,pathIsSymbolicLink,getTemporaryDirectory)
 import System.FilePath(splitDirectories, dropExtension, takeExtension,equalFilePath,makeRelative,(</>),(<.>))
 import qualified Distribution.Simple(defaultMainWithHooks,simpleUserHooks)
 import qualified Distribution.Types.BuildInfo.Lens as L
 import qualified Distribution.Types.Library.Lens as L
-import Distribution.Pretty(prettyShow)
-import Distribution.Types.PackageId(PackageIdentifier(pkgName,pkgVersion))
-import Distribution.Types.Version()
-import Distribution.PackageDescription.PrettyPrint(writeGenericPackageDescription)
-import Data.Maybe(fromMaybe)
 
 -- * Quick Start Functions #QuickStartFunctions#
 
@@ -345,6 +347,16 @@ defaultGeneratedCabalName gpd =
      ++ (prettyShow (pkgVersion (gpdPkg gpd)))
      ++ "-generated"
      <.> "cabal"
+
+-- | In service of the CLI app, read the ~.cabal~ file into a 'GenericPackageDescription'
+cabalFileToGenericPackageDescription
+  :: FilePath -- ^ An absolute path to the directory containing the .cabal file
+  -> IO (Either String GenericPackageDescription)
+cabalFileToGenericPackageDescription fp = do
+  cabalFileE <- findPackageDesc fp
+  case cabalFileE of
+    Left err -> pure (Left err)
+    Right cabalFile -> Right <$> readGenericPackageDescription silent cabalFile
 
 autoExposeConfHook
   :: UserHooks

@@ -1,0 +1,15 @@
+cabal-version:       >=1.10
+name:                overlapping-build
+version:             0.1.0.0
+license-file:        LICENSE
+maintainer:          aditya.siram@gmail.com
+
+library
+  hs-source-dirs: src/lib
+
+library internal
+  hs-source-dirs: src/lib/internal
+
+executable exe
+  main-is:  Main.hs
+  hs-source-dirs: src/exe

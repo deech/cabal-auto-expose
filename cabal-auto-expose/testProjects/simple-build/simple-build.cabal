@@ -1,0 +1,15 @@
+cabal-version:       >=1.10
+name:                simple-build
+version:             0.1.0.0
+license-file:        LICENSE
+build-type:          Simple
+
+library
+  hs-source-dirs: src/lib
+
+library internal
+  hs-source-dirs: src/internalLib
+
+executable exe
+  main-is:             Main.hs
+  hs-source-dirs: src/exe
