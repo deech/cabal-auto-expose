@@ -44,4 +44,15 @@ test-suite cabal-auto-expose-tests
     Cabal >= 3.2.0.0 && < 3.5.0.0,
     cabal-auto-expose == 0.1.0.2,
     hspec >= 2.7.4 && < 2.8,
-    filepath
+    filepath,
+    QuickCheck >= 2.14.1 && < 2.15
+
+benchmark cabal-auto-expose-benchmarks
+  type: exitcode-stdio-1.0
+  main-is: Benchmark.hs
+  build-depends:
+    base >= 4.14 && < 4.15,
+    QuickCheck >= 2.14.1 && < 2.15,
+    criterion >= 1.5.7.0 && < 1.5.8.0,
+    cabal-auto-expose,
+    time >= 1.11 && < 1.12

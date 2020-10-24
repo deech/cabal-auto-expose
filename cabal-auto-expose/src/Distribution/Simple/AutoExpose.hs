@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 -- | Import this module in your @Setup.hs@ to auto detect library modules in
 -- your project. The API does not conceal it's internals but in most cases you
 -- should only need the functions and datatype under
@@ -11,7 +12,7 @@ module Distribution.Simple.AutoExpose where
 import Control.Exception(catch,IOException)
 import Control.Monad((>=>),filterM)
 import Control.Monad.Extra(ifM,notM,whenJust)
-import Data.List(intercalate,nub)
+import Data.List(intercalate,nub,inits,unfoldr,sort)
 import Data.Maybe(fromMaybe)
 import Distribution.Compat.Lens((%~),(&))
 import Distribution.ModuleName(ModuleName,fromString,validModuleComponent)
@@ -99,7 +100,8 @@ moduleNamesToExpose
   -> [FilePath] -- ^ File paths to search
   -> [ModuleName]
 moduleNamesToExpose extensions =
-  map (fromString . intercalate ".")
+  sort
+  . map (fromString . intercalate ".")
   . filter (all validModuleComponent)
   . map toModuleComponents
   . filter hasExtension
@@ -205,12 +207,13 @@ nonLibraryHsSourcePaths pds =
 -- Used to associate a source directory with possibly inner directories that
 -- should be ignored with searching for Haskell modules.
 indexWithNeighbors :: [a] -> [(a,[a])]
-indexWithNeighbors (a:as) = reverse (go [] a as [])
-  where
-    go [] x (r:rs) accum = go [x] r rs ((x,(r:rs)):accum)
-    go ls x (r:rs) accum = go (ls++[x]) r rs ((x,(ls++(r:rs))):accum)
-    go ls x [] accum = (x,ls):accum
-indexWithNeighbors [] = []
+indexWithNeighbors as =
+  unfoldr
+    (\case
+        (ll:lls,x:rs) -> Just ((x,ll++rs),(lls,rs))
+        _ -> Nothing
+    )
+    (inits as, as)
 
 -- | Drill into the source trees for a component and find modules
 -- excluding the source trees for other components
@@ -448,4 +451,3 @@ sourceExtensions = ["hs","lhs"]
 -- | Backpack signature extensions, currently 'hsig' and 'lhsig'
 hsigExtensions :: [String]
 hsigExtensions = ["hsig","lhsig"]
-

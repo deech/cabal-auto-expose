@@ -6,6 +6,16 @@ import System.FilePath
 import Distribution.Simple.AutoExpose
 import Distribution.PackageDescription.PrettyPrint
 import Distribution.Types.GenericPackageDescription
+import Test.QuickCheck
+import Data.List
+
+prop_preserves_order :: [String] -> Bool
+prop_preserves_order xs =
+  map fst (indexWithNeighbors xs) == xs
+
+prop_contains_list_contents :: [String] -> Bool
+prop_contains_list_contents xs =
+  all (\(x,ns) -> sort x:ns == sort xs) (indexWithNeighbors xs)
 
 testProjectAgainstGoldenCabalFile :: FilePath -> FilePath -> IO ()
 testProjectAgainstGoldenCabalFile projectPath goldenFilePath = do
@@ -18,6 +28,8 @@ testProjectAgainstGoldenCabalFile projectPath goldenFilePath = do
       (showGenericPackageDescription newGpd) `shouldBe` expected
 
 main = do
+  quickCheck prop_preserves_order
+  quickCheck prop_contains_list_contents
   testProjects <- getDataDir
   hspec $ do
     describe "Simple builds:" $ do
