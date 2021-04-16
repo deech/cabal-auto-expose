@@ -16,7 +16,7 @@ import Data.List(intercalate,nub,inits,unfoldr,sort)
 import Data.Maybe(fromMaybe)
 import Distribution.Compat.Lens((%~),(&))
 import Distribution.ModuleName(ModuleName,fromString,validModuleComponent)
-import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData,packageDescription,modulePath)
+import Distribution.PackageDescription(hsSourceDirs,buildInfo,testBuildInfo,benchmarkBuildInfo,executables,testSuites,benchmarks,libBuildInfo,subLibraries,library,Library,GenericPackageDescription(..),HookedBuildInfo,Executable,TestSuite,Benchmark,condTreeData,packageDescription,modulePath, benchmarkInterface, BenchmarkInterface(..))
 import Distribution.PackageDescription.Parsec(readGenericPackageDescription)
 import Distribution.PackageDescription.PrettyPrint(writeGenericPackageDescription)
 import Distribution.Pretty(prettyShow)
@@ -152,6 +152,7 @@ data ExposedLib =
   deriving Show
 
 type ExposedExe = [ModuleName]
+type ExposedBenchmark = [ModuleName]
 
 -- | All the exposed library components, main library and sub libraries,
 -- and exe components
@@ -160,6 +161,8 @@ data AllExposed =
   { allExposedMainLib :: ExposedLib
   , allExposedSubLibs :: [(Library,ExposedLib)]
   , allExposedExes    :: [(Executable,ExposedExe)]
+  -- , allExposedTests   :: [(TestSuite,ExposedExe)]
+  , allExposedBenchs  :: [(Benchmark,ExposedBenchmark)]
   }
   deriving Show
 
@@ -212,6 +215,18 @@ nonExeHsSourcePaths pds =
      (map testBuildInfo (packageDescriptionSubsetTestSuites pds))
   ++ (map benchmarkBuildInfo (packageDescriptionSubsetBenchmarks pds))
 
+nonBenchHsSourcePaths :: PackageDescriptionSubset -> [[FilePath]]
+nonBenchHsSourcePaths pds =
+  map hsSourceDirs $
+     (map buildInfo (packageDescriptionSubsetExecutables pds))
+  ++ (map testBuildInfo (packageDescriptionSubsetTestSuites pds))
+
+nonTestHsSourcePaths :: PackageDescriptionSubset -> [[FilePath]]
+nonTestHsSourcePaths pds =
+  map hsSourceDirs $
+     (map buildInfo (packageDescriptionSubsetExecutables pds))
+  ++ (map benchmarkBuildInfo (packageDescriptionSubsetBenchmarks pds))
+
 -- | Associate each item in a list will it's left and right elements, eg.
 -- > indexWithNeighbors [1,2,3,4] == [(1,[2,3,4]),(2,[1,3,4]),(3,[1,2,4]),(4,[1,2,3])]
 --
@@ -257,12 +272,17 @@ getAllExposed pds customPPExts = do
       let mainLib = ExposedLib [] []
       subLibs <- subLibsExposed []
       exes <- exesExposed []
-      pure (AllExposed mainLib subLibs exes)
+      benchs <- benchsExposed []
+      -- tests <- testsExposed []
+      pure (AllExposed mainLib subLibs exes benchs) -- tests)
     Just l -> do
       mainLib <- mainLibExposed l
-      subLibs <- subLibsExposed (libSrcDir l)
-      exes <- exesExposed (libSrcDir l)
-      pure (AllExposed mainLib subLibs exes)
+      let libSrcDir' = libSrcDir l
+      subLibs <- subLibsExposed libSrcDir'
+      exes <- exesExposed libSrcDir'
+      benchs <- benchsExposed libSrcDir'
+      -- tests <- testsExposed libSrcDir'
+      pure (AllExposed mainLib subLibs exes benchs) -- tests)
   where
     ppExts :: [String]
     ppExts = nub (customPPExts ++ map fst knownSuffixHandlers)
@@ -270,6 +290,10 @@ getAllExposed pds customPPExts = do
     libSrcDir = nub . hsSourceDirs . libBuildInfo
     exeSrcDir :: Executable -> [FilePath]
     exeSrcDir = nub . hsSourceDirs . buildInfo
+    benchSrcDir :: Benchmark -> [FilePath]
+    benchSrcDir = nub . hsSourceDirs . benchmarkBuildInfo
+    -- testSrcDir :: TestSuite -> [FilePath]
+    -- testSrcDir = nub . hsSourceDirs . testBuildInfo
     mainLibExcludedPaths :: [[FilePath]]
     mainLibExcludedPaths =
       (map snd subLibSrcDirs) ++ (nonLibraryHsSourcePaths pds)
@@ -311,6 +335,39 @@ getAllExposed pds customPPExts = do
                pure (exe, otherMods)
            )
            (exeSrcDirsWithExcludedPaths mainLibSrcs)
+    benchSrcDirs :: [(Benchmark,[FilePath])]
+    benchSrcDirs = zip (packageDescriptionSubsetBenchmarks pds) (map benchSrcDir (packageDescriptionSubsetBenchmarks pds))
+    benchSrcDirsWithExcludedPaths :: [FilePath] -> [(Benchmark, ([FilePath], [[FilePath]]))]
+    benchSrcDirsWithExcludedPaths mainLibSrcs =
+      map (\((bench,benchSrcs),otherBenchs) ->
+             let excluded = (map snd otherBenchs) ++ (nonBenchHsSourcePaths pds) ++ (map snd subLibSrcDirs) ++ [mainLibSrcs]
+             in (bench, (benchSrcs,excluded))
+          )
+          (indexWithNeighbors benchSrcDirs)
+    benchsExposed :: [FilePath] -> IO [(Benchmark, ExposedBenchmark)]
+    benchsExposed mainLibSrcs =
+      mapM (\(bench,(benchSrcs,excluded)) -> do
+               otherMods <- getExposedModules (sourceExtensions ++ ppExts) benchSrcs excluded
+               pure (bench, otherMods)
+           )
+           (benchSrcDirsWithExcludedPaths mainLibSrcs)
+    -- testSrcDirs :: [(TestSuite,[FilePath])]
+    -- testSrcDirs = zip (packageDescriptionSubsetTestSuites pds) (map testSrcDir (packageDescriptionSubsetTestSuites pds))
+    -- testSrcDirsWithExcludedPaths :: [FilePath] -> [(TestSuite, ([FilePath], [[FilePath]]))]
+    -- testSrcDirsWithExcludedPaths mainLibSrcs =
+    --   map (\((test,testSrcs),otherTests) ->
+    --          let excluded = (map snd otherTests) ++ (nonTestHsSourcePaths pds) ++ (map snd subLibSrcDirs) ++ [mainLibSrcs]
+    --          in (test, (testSrcs,excluded))
+    --       )
+    --       (indexWithNeighbors testSrcDirs)
+    -- testsExposed :: [FilePath] -> IO [(TestSuite, Exposedtest)]
+    -- testsExposed mainLibSrcs =
+    --   mapM (\(test,(testSrcs,excluded)) -> do
+    --            otherMods <- getExposedModules (sourceExtensions ++ ppExts) testSrcs excluded
+    --            pure (test, otherMods)
+    --        )
+    --        (testSrcDirsWithExcludedPaths mainLibSrcs)
+
 
 -- | Since the @hs-source-dirs@ fields in a @.cabal@ file take a source tree
 -- path relative to the @.cabal@ file itself we need to make sure the current
@@ -339,13 +396,28 @@ updateExecutable exe exposedExe =
   let mainModule = fromString . intercalate "." . toModuleComponents . modulePath $ exe
   in exe & (L.otherModules %~ filter (/= mainModule) . nub . (++) exposedExe)
 
+updateBenchmark :: Benchmark -> ExposedBenchmark -> Benchmark
+updateBenchmark bench exposedBench =
+  let
+    mainModule = case benchmarkInterface bench of
+      BenchmarkExeV10 _ path ->
+        fromString . intercalate "." . toModuleComponents $ path
+      BenchmarkUnsupported t -> error ("Unsupported benchmark type" <> show t)
+  in
+    bench & (L.otherModules %~ (filter (/= mainModule) . nub . (++) exposedBench))
+
+-- updateTestSuite :: TestSuite -> ExposedExe -> TestSuite
+-- updateTestSuite test exposedTest =
+--   let mainModule = fromString . intercalate "." . toModuleComponents . modulePath $ test
+--   in test & (L.otherModules %~ filter (/= mainModule) . nub . (++) exposedTest)
+
 -- | Update the 'PackageDescription' of this package to include auto detected
 -- library modules. Also just to be nice fill in the 'Paths_...' module in
 -- 'otherModules' field of the library's 'BuildInfo'.
 updatePackageDescription :: HasCallStack => PackageDescription -> UserHooks -> IO PackageDescription
 updatePackageDescription pd uhs =
   withCabalFileDirectoryCwd Nothing $ do
-    (AllExposed exposedLib exposedSubLibs exposedExes) <-
+    (AllExposed exposedLib exposedSubLibs exposedExes exposedBenchs) <-
       getAllExposed (packageDescriptionToSubset pd) (map fst (hookedPreProcessors uhs))
     let newMainLibrary l =
           (updateLibrary l exposedLib) &
@@ -353,6 +425,7 @@ updatePackageDescription pd uhs =
     pure (pd { library = fmap newMainLibrary (library pd)
              , subLibraries = map (uncurry updateLibrary) exposedSubLibs
              , executables = map (uncurry updateExecutable) exposedExes
+             , benchmarks = map (uncurry updateBenchmark) exposedBenchs
              })
 
 -- | Update the 'GenericPackageDescription' of this package so the library can
@@ -368,7 +441,7 @@ updateGenericPackageDescription projectPath gpd ppExts =
   let updateCondTreeLib exposedLib condLib =
         condLib { condTreeData = updateLibrary (condTreeData condLib) exposedLib  }
   in withCabalFileDirectoryCwd projectPath $ do
-      (AllExposed exposedLib exposedSubLibs exposedExes) <-
+      (AllExposed exposedLib exposedSubLibs exposedExes exposedBenchs) <-
         getAllExposed (genericPackageDescriptionToSubset gpd) ppExts
       pure $
         gpd { condLibrary = fmap (updateCondTreeLib exposedLib) (condLibrary gpd)
@@ -378,6 +451,9 @@ updateGenericPackageDescription projectPath gpd ppExts =
             , condExecutables =
                 map (\((unqualName,condExe),exe) -> (unqualName,condExe { condTreeData = exe }))
                     (zip (condExecutables gpd) (map (uncurry updateExecutable) exposedExes))
+            , condBenchmarks =
+                map (\((unqualName,condBench),bench) -> (unqualName,condBench { condTreeData = bench }))
+                    (zip (condBenchmarks gpd) (map (uncurry updateBenchmark) exposedBenchs))
             }
 
 -- | The default name to use when generating an explicit Cabal file
