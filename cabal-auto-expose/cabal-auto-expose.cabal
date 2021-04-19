@@ -55,4 +55,4 @@ benchmark cabal-auto-expose-benchmarks
     QuickCheck >= 2.14.1 && < 2.15,
     criterion >= 1.5.7.0 && < 1.5.8.0,
     cabal-auto-expose,
-    time >= 1.10 && < 1.12
+    time >= 1.9 && < 1.12
