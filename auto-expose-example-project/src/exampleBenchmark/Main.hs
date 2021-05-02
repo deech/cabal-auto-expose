@@ -1,4 +1,6 @@
 module Main where
 
+import Module (message)
+
 main :: IO ()
-main = print "example benchmark"
+main = print message
